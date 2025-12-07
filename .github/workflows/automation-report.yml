@@ -1,0 +1,38 @@
+name: Publish Test & Load Result
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  upload-results:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install requests
+
+      - name: Upload Robot Results
+        run: |
+          python upload_robot.py \
+            --api ${{ secrets.QOPS_URL }} \
+            --key ${{ secrets.QOPS_KEY }} \
+            --project 1 \
+            --file reports/output.xml
+
+      - name: Upload Locust Results
+        run: |
+          python upload_locust.py \
+            --api ${{ secrets.QOPS_URL }} \
+            --key ${{ secrets.QOPS_KEY }} \
+            --project 1 \
+            --file reports/load.json
