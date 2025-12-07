@@ -115,3 +115,12 @@ def get_test_run(
     if not test_run:
         raise HTTPException(status_code=404, detail="Test run not found")
     return test_run
+
+@router.get("/project/{project_id}", response_model=List[schemas.TestRunBase])
+def list_test_runs_for_project(project_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(models.TestRun)
+        .filter(models.TestRun.project_id == project_id)
+        .order_by(models.TestRun.created_at.desc())
+        .all()
+    )

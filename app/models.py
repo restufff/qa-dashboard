@@ -22,8 +22,12 @@ class Project(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    test_runs = relationship("TestRun", back_populates="project", cascade="all, delete-orphan")
-    load_runs = relationship("LoadTestRun", back_populates="project", cascade="all, delete-orphan")
+    test_runs = relationship(
+        "TestRun", back_populates="project", cascade="all, delete-orphan"
+    )
+    load_runs = relationship(
+        "LoadTestRun", back_populates="project", cascade="all, delete-orphan"
+    )
 
 
 class TestRun(Base):
@@ -36,7 +40,7 @@ class TestRun(Base):
     build = Column(String(100), nullable=True)
     branch = Column(String(100), nullable=True)
     triggered_by = Column(String(100), nullable=True)
-    status = Column(String(50), nullable=False, default="unknown")  # passed/failed/mixed
+    status = Column(String(50), nullable=False, default="unknown")
     total = Column(Integer, default=0)
     passed = Column(Integer, default=0)
     failed = Column(Integer, default=0)
@@ -46,7 +50,9 @@ class TestRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="test_runs")
-    cases = relationship("TestCaseResult", back_populates="test_run", cascade="all, delete-orphan")
+    cases = relationship(
+        "TestCaseResult", back_populates="test_run", cascade="all, delete-orphan"
+    )
 
 
 class TestCaseResult(Base):
@@ -56,8 +62,8 @@ class TestCaseResult(Base):
     test_run_id = Column(Integer, ForeignKey("test_runs.id"), nullable=False)
     name = Column(String(255), nullable=False)
     classname = Column(String(255), nullable=True)
-    status = Column(String(50), nullable=False)  # passed/failed/skipped/error
-    duration = Column(Float, nullable=True)      # in seconds
+    status = Column(String(50), nullable=False)
+    duration = Column(Float, nullable=True)
     message = Column(Text, nullable=True)
 
     test_run = relationship("TestRun", back_populates="cases")
@@ -82,7 +88,7 @@ class LoadTestRun(Base):
     max_response_time = Column(Float, nullable=True)
     min_response_time = Column(Float, nullable=True)
     requests_per_second = Column(Float, nullable=True)
-    failure_rate = Column(Float, nullable=True)  # 0-100
+    failure_rate = Column(Float, nullable=True)
     duration_seconds = Column(Float, nullable=True)
 
     success_threshold_met = Column(Boolean, default=None)
@@ -92,6 +98,7 @@ class LoadTestRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="load_runs")
+
 
 class APIKey(Base):
     __tablename__ = "api_keys"

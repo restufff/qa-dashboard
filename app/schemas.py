@@ -1,10 +1,11 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-
 from pydantic import BaseModel
 
 
-# ==== PROJECTS ==== #
+# =========================
+# PROJECTS
+# =========================
 
 class ProjectCreate(BaseModel):
     name: str
@@ -18,10 +19,12 @@ class ProjectBase(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-# ==== TEST RUNS ==== #
+# =========================
+# TEST CASE RESULTS
+# =========================
 
 class TestCaseResultBase(BaseModel):
     id: int
@@ -32,8 +35,12 @@ class TestCaseResultBase(BaseModel):
     message: Optional[str]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
+
+# =========================
+# TEST RUN
+# =========================
 
 class TestRunBase(BaseModel):
     id: int
@@ -53,14 +60,20 @@ class TestRunBase(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class TestRunDetail(TestRunBase):
     cases: List[TestCaseResultBase]
 
+    class Config:
+        from_attributes = True
 
-# Payload untuk upload Robot/JUnit
+
+# =========================
+# PAYLOAD FOR ROBOT RUN
+# =========================
+
 class RobotRunMeta(BaseModel):
     project_id: int
     name: str = "robot-run"
@@ -70,7 +83,9 @@ class RobotRunMeta(BaseModel):
     triggered_by: Optional[str] = None
 
 
-# ==== LOAD TEST RUNS ==== #
+# =========================
+# LOAD TEST RUN
+# =========================
 
 class LoadTestRunBase(BaseModel):
     id: int
@@ -96,7 +111,7 @@ class LoadTestRunBase(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class LocustRunPayload(BaseModel):
@@ -107,7 +122,6 @@ class LocustRunPayload(BaseModel):
     branch: Optional[str] = None
     triggered_by: Optional[str] = None
 
-    # summary metrics dari Locust JSON adapter
     total_requests: int
     total_failures: int
     avg_response_time: float
@@ -118,21 +132,17 @@ class LocustRunPayload(BaseModel):
     requests_per_second: float
     failure_rate: float
     duration_seconds: float
+
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     success_threshold_met: Optional[bool] = None
 
-    extra: Optional[Dict[str, Any]] = None  # kalau mau kirim extra info
+    extra: Optional[Dict[str, Any]] = None
 
 
-# ==== SUMMARY DASHBOARD ==== #
-
-class ProjectSummary(BaseModel):
-    project: ProjectBase
-    last_test_run: Optional[TestRunBase]
-    last_load_run: Optional[LoadTestRunBase]
-    overall_pass_rate: Optional[float]  # % (functional)
-    last_load_failure_rate: Optional[float]  # %
+# =========================
+# API KEY MODEL
+# =========================
 
 class APIKeyBase(BaseModel):
     id: int
@@ -141,8 +151,23 @@ class APIKeyBase(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class APIKeyCreate(BaseModel):
     name: str
+
+
+# =========================
+# SUMMARY DASHBOARD MODEL
+# =========================
+
+class ProjectSummary(BaseModel):
+    project: ProjectBase
+    last_test_run: Optional[TestRunBase]
+    last_load_run: Optional[LoadTestRunBase]
+    overall_pass_rate: Optional[float]
+    last_load_failure_rate: Optional[float]
+
+    class Config:
+        from_attributes = True
