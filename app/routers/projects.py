@@ -36,10 +36,6 @@ def create_project(payload: schemas.ProjectCreate, db: Session = Depends(get_db)
     return project
 
 
-@router.get("/", response_model=List[schemas.ProjectBase])
+@router.get("", response_model=List[schemas.ProjectBase])
 def list_projects(db: Session = Depends(get_db)):
-    return (
-        db.query(models.Project)
-        .order_by(models.Project.created_at.desc())
-        .all()
-    )
+    return db.query(models.Project).order_by(models.Project.created_at.desc()).all()

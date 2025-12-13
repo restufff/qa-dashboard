@@ -3,13 +3,11 @@ from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from .database import Base, engine, get_db
 from . import models, schemas
-from .routers import projects, test_runs, load_runs, auth
-from fastapi import Request
+from .routers import projects, test_runs, load_runs, auth, test_cases, evidences
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
-    redirect_slashes=False,
     title="QOps Backend",
     description="Simple TestOps-like backend for functional + load testing",
     version="0.1.0",
@@ -17,21 +15,20 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # GUNAKAN * dulu saat development
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    print("➡️ Incoming:", request.method, request.url)
-    response = await call_next(request)
-    print("⬅️ Response:", response.status_code)
-    return response
-
 app.include_router(projects.router)
 app.include_router(test_runs.router)
 app.include_router(load_runs.router)
+app.include_router(test_cases.router)
+app.include_router(evidences.router)
 app.include_router(auth.router)
 
 
@@ -55,17 +52,13 @@ def get_project_summary(project_id: int, db: Session = Depends(get_db)):
         .first()
     )
 
-    overall_pass_rate = (
-        (last_test_run.passed / last_test_run.total * 100.0)
-        if (last_test_run and last_test_run.total and last_test_run.total > 0)
-        else None
-    )
+    overall_pass_rate = None
+    if last_test_run and last_test_run.total > 0:
+        overall_pass_rate = (last_test_run.passed / last_test_run.total) * 100.0
 
-    last_load_failure_rate = (
-        last_load_run.failure_rate
-        if (last_load_run and last_load_run.failure_rate is not None)
-        else None
-    )
+    last_load_failure_rate = None
+    if last_load_run:
+        last_load_failure_rate = last_load_run.failure_rate
 
     return schemas.ProjectSummary(
         project=project,
@@ -74,4 +67,3 @@ def get_project_summary(project_id: int, db: Session = Depends(get_db)):
         overall_pass_rate=overall_pass_rate,
         last_load_failure_rate=last_load_failure_rate,
     )
-

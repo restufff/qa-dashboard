@@ -1,98 +1,17 @@
+from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session, joinedload
 
-from .. import models, schemas, utils
 from ..database import get_db
-from ..dependencies import require_api_key
+from .. import models, schemas
 
 router = APIRouter(prefix="/test-runs", tags=["test-runs"])
 
 
-@router.post("/robot", response_model=schemas.TestRunDetail)
-async def ingest_robot_run(
-    project_id: int = Form(...),
-    name: str = Form("robot-run"),
-    environment: str | None = Form(None),
-    build: str | None = Form(None),
-    branch: str | None = Form(None),
-    triggered_by: str | None = Form(None),
-    junit_file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    api=Depends(require_api_key),  # API KEY VALIDATION
-):
-    """
-    Endpoint upload report Robot Framework / pytest / JUnit XML.
-    API key required via X-API-KEY header.
-    """
-
-    # 1. Validate project
-    project = db.query(models.Project).get(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    # 2. Read XML file
-    xml_bytes = await junit_file.read()
-
-    # 3. Parse XML → testcases + summary
-    testcases_data, summary = utils.parse_junit_xml(xml_bytes)
-
-    # 4. Determine status
-    status = "unknown"
-    if summary["total"] == 0:
-        status = "unknown"
-    elif summary["failed"] == 0:
-        status = "passed"
-    else:
-        status = "failed"
-
-    # 5. Store test run record
-    test_run = models.TestRun(
-        project_id=project.id,
-        name=name,
-        environment=environment,
-        build=build,
-        branch=branch,
-        triggered_by=triggered_by,
-        status=status,
-        total=summary["total"],
-        passed=summary["passed"],
-        failed=summary["failed"],
-        skipped=summary["skipped"],
-    )
-    db.add(test_run)
-    db.flush()  # fetch test_run.id before commit
-
-    # 6. Store testcase breakdown
-    for tc in testcases_data:
-        testcase = models.TestCaseResult(
-            test_run_id=test_run.id,
-            name=tc["name"],
-            classname=tc["classname"],
-            status=tc["status"],
-            duration=tc["duration"],
-            message=tc["message"],
-        )
-        db.add(testcase)
-
-    # 7. Finalize commit
-    db.commit()
-    db.refresh(test_run)
-
-    return test_run
-
-
 @router.get("", response_model=List[schemas.TestRunBase])
-def list_test_runs(
-    project_id: int,
-    db: Session = Depends(get_db),
-    api=Depends(require_api_key),
-):
-    """
-    List semua test run untuk project tertentu.
-    API key required via header.
-    """
+def list_test_runs(project_id: int, db: Session = Depends(get_db)):
     return (
         db.query(models.TestRun)
         .filter(models.TestRun.project_id == project_id)
@@ -101,26 +20,82 @@ def list_test_runs(
     )
 
 
-@router.get("/{test_run_id}", response_model=schemas.TestRunDetail)
-def get_test_run(
-    test_run_id: int,
-    db: Session = Depends(get_db),
-    api=Depends(require_api_key),
-):
-    """
-    Ambil detail satu test run beserta hasil testcase.
-    API key required.
-    """
-    test_run = db.query(models.TestRun).get(test_run_id)
-    if not test_run:
+@router.get("/{run_id}", response_model=schemas.TestRunBase)
+def get_test_run(run_id: int, db: Session = Depends(get_db)):
+    tr = db.query(models.TestRun).get(run_id)
+    if not tr:
         raise HTTPException(status_code=404, detail="Test run not found")
-    return test_run
+    return tr
 
-@router.get("/project/{project_id}", response_model=List[schemas.TestRunBase])
-def list_test_runs_for_project(project_id: int, db: Session = Depends(get_db)):
-    return (
-        db.query(models.TestRun)
-        .filter(models.TestRun.project_id == project_id)
-        .order_by(models.TestRun.created_at.desc())
+
+# ==========================
+# ✅ EXECUTION CASES
+# ==========================
+
+@router.get("/{run_id}/cases", response_model=List[schemas.TestRunCaseWithTestCase])
+def list_run_cases(run_id: int, db: Session = Depends(get_db)):
+    tr = db.query(models.TestRun).get(run_id)
+    if not tr:
+        raise HTTPException(status_code=404, detail="Test run not found")
+
+    run_cases = (
+        db.query(models.TestRunCase)
+        .options(joinedload(models.TestRunCase.test_case))
+        .filter(models.TestRunCase.test_run_id == run_id)
+        .order_by(models.TestRunCase.id.asc())
         .all()
     )
+    return run_cases
+
+
+@router.post("/{run_id}/cases", response_model=List[schemas.TestRunCaseWithTestCase])
+def generate_run_cases(run_id: int, payload: List[schemas.TestRunCaseCreate], db: Session = Depends(get_db)):
+    tr = db.query(models.TestRun).get(run_id)
+    if not tr:
+        raise HTTPException(status_code=404, detail="Test run not found")
+
+    # Validate test cases belong to same project
+    for item in payload:
+        tc = db.query(models.TestCase).get(item.test_case_id)
+        if not tc or tc.project_id != tr.project_id:
+            raise HTTPException(status_code=400, detail="Invalid test_case_id for this run")
+
+        exists = (
+            db.query(models.TestRunCase)
+            .filter(models.TestRunCase.test_run_id == run_id, models.TestRunCase.test_case_id == item.test_case_id)
+            .first()
+        )
+        if not exists:
+            db.add(models.TestRunCase(
+                test_run_id=run_id,
+                test_case_id=item.test_case_id,
+                status="untested"
+            ))
+
+    db.commit()
+
+    run_cases = (
+        db.query(models.TestRunCase)
+        .options(joinedload(models.TestRunCase.test_case))
+        .filter(models.TestRunCase.test_run_id == run_id)
+        .order_by(models.TestRunCase.id.asc())
+        .all()
+    )
+    return run_cases
+
+
+@router.put("/cases/{run_case_id}", response_model=schemas.TestRunCaseBase)
+def update_run_case(run_case_id: int, payload: schemas.TestRunCaseUpdate, db: Session = Depends(get_db)):
+    rc = db.query(models.TestRunCase).get(run_case_id)
+    if not rc:
+        raise HTTPException(status_code=404, detail="Run case not found")
+
+    # Update
+    rc.status = payload.status
+    rc.comment = payload.comment
+    rc.executed_at = datetime.utcnow()
+    rc.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(rc)
+    return rc
